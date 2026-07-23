@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tính điểm trắc nghiệm</title>
+  <style>
+    body { font-family: sans-serif; max-width: 800px; margin: 20px auto; }
+    textarea { width: 100%; height: 80px; font-family: monospace; }
+    label { font-weight: bold; }
+    .result { margin-top: 10px; font-size: 18px; }
+    .error { color: red; }
+  </style>
+</head>
+<body>
+  <h2>Tính số câu đúng trắc nghiệm</h2>
+
+  <p>Nhập đáp án chuẩn và đáp án sinh viên dưới dạng chuỗi ký tự (mỗi câu 1 ký tự A/B/C/D,...).</p>
+
+  <label for="answerKey">Đáp án chuẩn:</label><br>
+  <textarea id="answerKey" placeholder="Ví dụ: ABCDDCBA..."></textarea><br><br>
+
+  <label for="studentAnswers">Đáp án sinh viên:</label><br>
+  <textarea id="studentAnswers" placeholder="Ví dụ: ABCABCAA..."></textarea><br><br>
+
+  <button onclick="score()">Tính điểm</button>
+
+  <div id="message" class="error"></div>
+  <div id="result" class="result"></div>
+
+  <script>
+    function normalize(str) {
+      // Bỏ khoảng trắng, xuống dòng, chuyển sang chữ hoa
+      return str.replace(/\s+/g, '').toUpperCase();
+    }
+
+    function score() {
+      const keyRaw = document.getElementById('answerKey').value;
+      const stuRaw = document.getElementById('studentAnswers').value;
+
+      const key = normalize(keyRaw);
+      const stu = normalize(stuRaw);
+
+      const msg = document.getElementById('message');
+      const res = document.getElementById('result');
+      msg.textContent = '';
+      res.textContent = '';
+
+      if (!key || !stu) {
+        msg.textContent = 'Vui lòng nhập cả đáp án chuẩn và đáp án sinh viên.';
+        return;
+      }
+
+      if (key.length !== stu.length) {
+        msg.textContent = 'Hai chuỗi không cùng độ dài. Hãy kiểm tra lại số câu.';
+        return;
+      }
+
+      let correct = 0;
+      let detail = [];
+
+      for (let i = 0; i < key.length; i++) {
+        const q = i + 1;
+        const correctAns = key[i];
+        const stuAns = stu[i];
+        const isCorrect = correctAns === stuAns;
+        if (isCorrect) correct++;
+        detail.push(
+          'Câu ' + q + ': chuẩn=' + correctAns +
+          ', SV=' + (stuAns || '-') +
+          (isCorrect ? ' (Đúng)' : ' (Sai)')
+        );
+      }
+
+      res.innerHTML =
+        'Số câu đúng: ' + correct + '/' + key.length +
+        '<br>Tỉ lệ đúng: ' + ((correct / key.length) * 100).toFixed(2) + '%'
+        + '<br><br>Chi tiết:<br>' + detail.join('<br>');
+    }
+  </script>
+</body>
+</html>
