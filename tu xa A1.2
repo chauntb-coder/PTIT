@@ -1,231 +1,158 @@
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-  <meta charset="UTF-8" />
-  <title>Tính điểm trắc nghiệm từ file tổng hợp</title>
-  <style>
-    body { font-family: sans-serif; max-width: 1000px; margin: 20px auto; }
-    label { font-weight: bold; }
-    .result { margin-top: 10px; font-size: 16px; }
-    .error { color: red; }
-    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
-    th, td { border: 1px solid #ccc; padding: 4px 6px; font-size: 13px; text-align: center; }
-    th { background: #f0f0f0; }
-  </style>
+<script>
+  const NUM_MCQ = 30;
 
-  <!-- SheetJS để đọc Excel trên trình duyệt -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-</head>
-<body>
-  <h2>Tính điểm 30 câu trắc nghiệm từ file tổng hợp</h2>
+  function normalize(str) {
+    return (str || '').toString().trim().toUpperCase();
+  }
 
-  <p>
-    File Excel tổng hợp gồm:<br>
-    - Phần trên: 4 dòng đáp án cho 4 mã đề (có cột "Mã Đề", sau đó là các cột câu 1, Điểm, câu 2, Điểm, ...).<br>
-    - Phần dưới: danh sách sinh viên (STT, Họ tên, SBD, Điểm, Mã Đề, câu 1, Điểm, câu 2, Điểm, ...).<br>
-    Hệ thống chỉ chấm <strong>30 câu trắc nghiệm đầu</strong>, các câu sau (tự luận) sẽ bỏ qua.
-  </p>
+  function processExcel() {
+    const fileInput = document.getElementById('excelFile');
+    const file = fileInput.files[0];
+    const msg = document.getElementById('message');
+    const resultDiv = document.getElementById('result');
+    msg.textContent = '';
+    resultDiv.textContent = '';
 
-  <label for="excelFile">Upload file Excel tổng hợp (.xlsx/.xls):</label><br>
-  <input type="file" id="excelFile" accept=".xlsx,.xls">
-  <button onclick="processExcel()">Đọc file &amp; tính điểm</button>
-
-  <div id="message" class="error"></div>
-  <div id="result" class="result"></div>
-
-  <script>
-    // Số câu trắc nghiệm cần chấm
-    const NUM_MCQ = 30;
-
-    // Hàm tiện ích: chuẩn hóa đáp án
-    function normalize(str) {
-      return (str || '').toString().trim().toUpperCase();
+    if (!file) {
+      msg.textContent = 'Vui lòng chọn file Excel tổng hợp.';
+      return;
     }
 
-    function processExcel() {
-      const fileInput = document.getElementById('excelFile');
-      const file = fileInput.files[0];
-      const msg = document.getElementById('message');
-      const resultDiv = document.getElementById('result');
-      msg.textContent = '';
-      resultDiv.textContent = '';
+    const reader = new FileReader();
 
-      if (!file) {
-        msg.textContent = 'Vui lòng chọn file Excel tổng hợp.';
-        return;
-      }
+    reader.onload = function(e) {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-      const reader = new FileReader();
+        if (rows.length < 7) {
+          msg.textContent = 'File quá ngắn, không đủ dữ liệu đáp án và sinh viên.';
+          return;
+        }
 
-      reader.onload = function(e) {
-        try {
-          const data = new Uint8Array(e.target.result);
-          const workbook = XLSX.read(data, { type: 'array' });
-          const sheetName = workbook.SheetNames[0];
-          const sheet = workbook.Sheets[sheetName];
+        // ================== PHẦN ĐÁP ÁN ==================
+        const answerHeaderRow = 0; // Excel row 1
+        const answerStartRow = 1;  // Excel row 2
+        const answerEndRow   = 4;  // Excel row 5 (4 mã đề: 032, 033, 034, 031)
 
-          // Lấy toàn bộ sheet dạng mảng 2D (array-of-arrays)
-          const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        const answerKeys = {}; // { code: "ABCD..." }
 
-          if (rows.length < 6) {
-            msg.textContent = 'File quá ngắn, không đủ dữ liệu đáp án và sinh viên.';
-            return;
+        const header = rows[answerHeaderRow] || [];
+        let codeColIndex = -1;
+        for (let i = 0; i < header.length; i++) {
+          const v = normalize(header[i]);
+          if (v === 'MÃ ĐỀ' || v === 'MA ĐỀ' || v === 'MA DE') {
+            codeColIndex = i;
+            break;
+          }
+        }
+
+        if (codeColIndex === -1) {
+          msg.textContent = 'Không tìm thấy cột "Mã Đề" trong phần đáp án (hàng 1).';
+          return;
+        }
+
+        const firstAnswerCol = codeColIndex + 1;
+
+        for (let r = answerStartRow; r <= answerEndRow && r < rows.length; r++) {
+          const row = rows[r];
+          if (!row || row.length === 0) continue;
+
+          const code = normalize(row[codeColIndex]);
+          if (!code) continue;
+
+          const answers = [];
+          let col = firstAnswerCol;
+          while (answers.length < NUM_MCQ && col < row.length) {
+            const ans = normalize(row[col]);
+            if (ans) answers.push(ans);
+            col += 2; // bỏ cột Điểm
           }
 
-          // ======================= ĐỌC ĐÁP ÁN MÃ ĐỀ =======================
-          // Giả định:
-          // - Hàng 0: header chứa "Mã Đề" và các số câu 1, 2, 3,...
-          // - Hàng 1-4: mỗi hàng một mã đề (032, 033, 034, ...).
-          // Bạn có thể chỉnh chỉ số hàng nếu file thật khác.
+          answerKeys[code] = answers.join('');
+        }
 
-          const answerKeys = {}; // { code: "ABCD..." }
+        if (Object.keys(answerKeys).length === 0) {
+          msg.textContent = 'Không đọc được đáp án cho các mã đề (hàng 2–5).';
+          return;
+        }
 
-          // Tìm cột "Mã Đề" trong hàng header (hàng 0)
-          const header = rows[0] || [];
-          let codeColIndex = -1;
-          for (let i = 0; i < header.length; i++) {
-            const v = normalize(header[i]);
-            if (v === 'MÃ ĐỀ' || v === 'MA DE' || v === 'MAĐE') {
-              codeColIndex = i;
-              break;
-            }
-          }
+        // ================== PHẦN SINH VIÊN ==================
+        const studentStartRow = 6; // Excel row 7
 
-          if (codeColIndex === -1) {
-            msg.textContent = 'Không tìm thấy cột "Mã Đề" trong phần đáp án.';
-            return;
-          }
+        const results = [];
+        for (let r = studentStartRow; r < rows.length; r++) {
+          const row = rows[r];
+          if (!row || row.length === 0) continue;
 
-          // Cột đầu tiên chứa câu 1 nằm sau cột "Mã Đề" (codeColIndex + 1)
-          const firstAnswerCol = codeColIndex + 1;
+          // cột 2: SBD, cột 4: Mã Đề (theo hình: A=STT, B=Họ tên, C=SBD, D=Điểm, E=Mã Đề)
+          const studentId = (row[2] || '').toString().trim();
+          const code = normalize(row[4]);
 
-          // Các hàng chứa mã đề: giả sử là hàng 1 đến khi hết ô "Mã Đề"
-          // Ở file mẫu bạn, có 4 mã đề → đọc 4 hàng (1..4)
-          for (let r = 1; r < rows.length; r++) {
-            const row = rows[r];
-            if (!row || row.length === 0) continue;
+          if (!studentId || !code) continue;
 
-            const code = normalize(row[codeColIndex]);
-            if (!code) {
-              // Khi gặp hàng trống "Mã Đề" thì coi như hết phần đáp án
-              // và bắt đầu phần sinh viên sau đó
-              if (r > 1) {
-                // r là hàng đầu tiên sau phần đáp án
-                var studentStartRow = r;
-                break;
-              }
-              continue;
-            }
-
-            // Lấy đáp án 30 câu đầu, bỏ qua cột "Điểm" xen giữa
-            const answers = [];
-            let col = firstAnswerCol;
-            while (answers.length < NUM_MCQ && col < row.length) {
-              const ans = normalize(row[col]);
-              if (ans) answers.push(ans);
-              // Nhảy 2 cột: [câu, điểm] → [câu tiếp theo]
-              col += 2;
-            }
-
-            answerKeys[code] = answers.join('');
-          }
-
-          if (typeof studentStartRow === 'undefined') {
-            msg.textContent = 'Không xác định được vị trí bắt đầu phần sinh viên.';
-            return;
-          }
-
-          if (Object.keys(answerKeys).length === 0) {
-            msg.textContent = 'Không đọc được đáp án cho các mã đề.';
-            return;
-          }
-
-          // ======================= ĐỌC PHẦN SINH VIÊN =======================
-          const results = [];
-
-          for (let r = studentStartRow; r < rows.length; r++) {
-            const row = rows[r];
-            if (!row || row.length === 0) continue;
-
-            // Giả định cấu trúc:
-            // cột 0: STT
-            // cột 1: Họ Tên
-            // cột 2: SBD
-            // cột 3: Điểm (tổng) -> bỏ
-            // cột 4: Mã Đề
-            const studentId = (row[2] || '').toString().trim();
-            const code = normalize(row[4]);
-
-            if (!studentId || !code) continue; // bỏ dòng trống / không có SBD hoặc mã đề
-
-            const key = answerKeys[code];
-            if (!key) {
-              results.push({
-                studentId,
-                code,
-                correct: null,
-                total: NUM_MCQ,
-                percent: '',
-                error: 'Không tìm thấy đáp án cho mã đề ' + code
-              });
-              continue;
-            }
-
-            // Đáp án sinh viên: bắt đầu từ cột sau Mã Đề (cột 5)
-            // cấu trúc: [câu1, điểm1, câu2, điểm2, ...]
-            const stuAnswers = [];
-            let col = 5;
-            while (stuAnswers.length < NUM_MCQ && col < row.length) {
-              const ans = normalize(row[col]);
-              if (ans) stuAnswers.push(ans);
-              col += 2; // bỏ cột Điểm
-            }
-
-            const studentString = stuAnswers.join('');
-
-            if (studentString.length !== key.length) {
-              results.push({
-                studentId,
-                code,
-                correct: null,
-                total: NUM_MCQ,
-                percent: '',
-                error:
-                  'Số câu đọc được: ' + studentString.length +
-                  ', số câu đáp án: ' + key.length
-              });
-              continue;
-            }
-
-            let correct = 0;
-            for (let i = 0; i < key.length; i++) {
-              if (key[i] === studentString[i]) correct++;
-            }
-            const total = NUM_MCQ;
-            const percent = total > 0 ? (correct / total) * 100 : 0;
-
+          const key = answerKeys[code];
+          if (!key) {
             results.push({
               studentId,
               code,
-              correct,
-              total,
-              percent: percent.toFixed(2) + '%',
-              error: ''
+              correct: null,
+              total: NUM_MCQ,
+              percent: '',
+              error: 'Không tìm thấy đáp án cho mã đề ' + code
             });
+            continue;
           }
 
-          renderResult(results);
-        } catch (err) {
-          console.error(err);
-          msg.textContent = 'Có lỗi khi xử lý file. Vui lòng kiểm tra lại cấu trúc file.';
+          const stuAnswers = [];
+          let col = 5; // cột sau Mã Đề
+          while (stuAnswers.length < NUM_MCQ && col < row.length) {
+            const ans = normalize(row[col]);
+            if (ans) stuAnswers.push(ans);
+            col += 2; // bỏ cột Điểm
+          }
+
+          const studentString = stuAnswers.join('');
+
+          if (studentString.length !== key.length) {
+            results.push({
+              studentId,
+              code,
+              correct: null,
+              total: NUM_MCQ,
+              percent: '',
+              error:
+                'Số câu đọc được: ' + studentString.length +
+                ', số câu đáp án: ' + key.length
+            });
+            continue;
+          }
+
+          let correct = 0;
+          for (let i = 0; i < key.length; i++) {
+            if (key[i] === studentString[i]) correct++;
+          }
+          const total = NUM_MCQ;
+          const percent = total > 0 ? (correct / total) * 100 : 0;
+
+          results.push({
+            studentId,
+            code,
+            correct,
+            total,
+            percent: percent.toFixed(2) + '%',
+            error: ''
+          });
         }
-      };
 
-      reader.onerror = function() {
-        msg.textContent = 'Không đọc được file Excel.';
-      };
-
-      reader.readAsArrayBuffer(file);
+        renderResult(results);
+      } catch (err) {
+        console.error(err);
+        msg.textContent = 'Có lỗi khi xử lý file. Vui lòng kiểm tra lại cấu trúc file.';
+      }
     }
 
     function renderResult(results) {
@@ -261,6 +188,4 @@
       html += '</tbody></table>';
       resultDiv.innerHTML = html;
     }
-  </script>
-</body>
-</html>
+</script>
