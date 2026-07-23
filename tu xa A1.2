@@ -15,9 +15,13 @@
   <h2>Tính số câu đúng trắc nghiệm</h2>
 
   <h3>1. Upload file đáp án</h3>
-  <p>File CSV: cột 1 là mã đề, các cột tiếp theo là đáp án từng câu (A/B/C/D,...).</p>
+  <p>
+    File CSV / TXT: cột 1 là mã đề, các cột tiếp theo là đáp án từng câu (A/B/C/D,...).<br>
+    Ví dụ một dòng:
+    <code>100,C,B,A,D,B,C,...</code>
+  </p>
 
-  <!-- TRƯỜNG UPLOAD FILE ĐÁP ÁN -->
+  <!-- Ô UPLOAD FILE ĐÁP ÁN -->
   <input type="file" id="answerFile" accept=".csv,.txt">
   <button onclick="loadAnswerFile()">Đọc file đáp án</button>
 
@@ -34,6 +38,8 @@
   <hr>
 
   <h3>2. Nhập đáp án sinh viên</h3>
+  <p>Nhập chuỗi đáp án sinh viên (mỗi câu 1 ký tự A/B/C/D,...). Có thể có khoảng trắng, xuống dòng.</p>
+
   <label for="studentAnswers">Đáp án sinh viên:</label><br>
   <textarea id="studentAnswers" placeholder="Ví dụ: ABCABCAA..."></textarea><br><br>
 
@@ -43,8 +49,8 @@
   <div id="result" class="result"></div>
 
   <script>
-    let answerKeys = {};
-    let currentKey = '';
+    let answerKeys = {};   // { code: "ABCD..." }
+    let currentKey = '';   // Chuỗi đáp án chuẩn đang dùng
 
     function normalize(str) {
       return str.replace(/\s+/g, '').toUpperCase();
@@ -61,4 +67,125 @@
         return;
       }
 
-      const reader = new 
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const text = e.target.result;
+        parseAnswerFile(text);
+      };
+      reader.onerror = function() {
+        msg.textContent = 'Không đọc được file.';
+      };
+      reader.readAsText(file, 'UTF-8');
+    }
+
+    function parseAnswerFile(text) {
+      answerKeys = {};
+      const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+
+      lines.forEach(line => {
+        // Tách theo dấu phẩy, chấm phẩy hoặc tab
+        const parts = line.split(/[,;\t]/).map(p => p.trim());
+        if (parts.length < 2) return;
+
+        const code = parts[0];                 // mã đề
+        const answers = parts
+          .slice(1)                            // các cột đáp án
+          .join('')                            // ghép lại
+          .replace(/\s+/g, '')                 // bỏ khoảng trắng
+          .toUpperCase();
+
+        if (code && answers.length > 0) {
+          answerKeys[code] = answers;
+        }
+      });
+
+      const sel = document.getElementById('codeSelect');
+      sel.innerHTML = '<option value="">-- Chọn mã đề --</option>';
+
+      Object.keys(answerKeys).forEach(code => {
+        const opt = document.createElement('option');
+        opt.value = code;
+        opt.textContent = code;
+        sel.appendChild(opt);
+      });
+
+      if (Object.keys(answerKeys).length === 0) {
+        document.getElementById('fileMessage').textContent =
+          'Không tìm thấy dòng dữ liệu hợp lệ trong file.';
+        document.getElementById('codeSection').style.display = 'none';
+      } else {
+        document.getElementById('fileMessage').textContent = '';
+        document.getElementById('codeSection').style.display = 'block';
+      }
+
+      currentKey = '';
+      document.getElementById('previewKey').innerHTML = '';
+    }
+
+    function updateSelectedKey() {
+      const code = document.getElementById('codeSelect').value;
+      const preview = document.getElementById('previewKey');
+
+      if (!code || !answerKeys[code]) {
+        currentKey = '';
+        preview.innerHTML = '';
+        return;
+      }
+
+      currentKey = answerKeys[code];
+      preview.innerHTML =
+        '<p>Đáp án cho mã đề ' + code +
+        ' (' + currentKey.length + ' câu):<br><code>' +
+        currentKey + '</code></p>';
+    }
+
+    function score() {
+      const msg = document.getElementById('message');
+      const res = document.getElementById('result');
+      msg.textContent = '';
+      res.textContent = '';
+
+      if (!currentKey) {
+        msg.textContent = 'Chưa chọn mã đề hoặc chưa có đáp án chuẩn.';
+        return;
+      }
+
+      const stuRaw = document.getElementById('studentAnswers').value;
+      const stu = normalize(stuRaw);
+
+      if (!stu) {
+        msg.textContent = 'Vui lòng nhập đáp án sinh viên.';
+        return;
+      }
+
+      if (stu.length !== currentKey.length) {
+        msg.textContent =
+          'Số câu trong bài làm sinh viên (' + stu.length +
+          ') không khớp với đề (' + currentKey.length + ').';
+        return;
+      }
+
+      let correct = 0;
+      let detail = [];
+
+      for (let i = 0; i < currentKey.length; i++) {
+        const q = i + 1;
+        const correctAns = currentKey[i];
+        const stuAns = stu[i];
+        const isCorrect = correctAns === stuAns;
+        if (isCorrect) correct++;
+        detail.push(
+          'Câu ' + q + ': chuẩn=' + correctAns +
+          ', SV=' + (stuAns || '-') +
+          (isCorrect ? ' (Đúng)' : ' (Sai)')
+        );
+      }
+
+      res.innerHTML =
+        'Số câu đúng: ' + correct + '/' + currentKey.length +
+        '<br>Tỉ lệ đúng: ' + ((correct / currentKey.length) * 100).toFixed(2) + '%' +
+        '<br><br>Chi tiết:<br>' + detail.join('<br>');
+    }
+  </script>
+</body>
+</html>
