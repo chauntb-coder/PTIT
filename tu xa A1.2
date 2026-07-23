@@ -38,7 +38,7 @@
   <h3>2. Upload file câu trả lời sinh viên (Excel/CSV)</h3>
   <p>
     Cấu trúc:<br>
-    A: STT, B: SBD, C: Điểm (bỏ qua), D: Mã Đề, E: Câu 1, F: Câu 2, ...<br>
+    A: STT, B: SBD, C: Điểm (bỏ), D: Mã Đề, E: Câu 1, F: Câu 2, ...<br>
     Chỉ chấm từ câu 1 đến câu 30.
   </p>
 
@@ -186,7 +186,7 @@
             while (stuAnswers.length < NUM_MCQ && col < row.length) {
               const ans = normalize(row[col]);
               if (ans) stuAnswers.push(ans);
-              col++; // mỗi cột một câu (không có cột điểm xen giữa)
+              col++; // mỗi cột một câu
             }
 
             const studentString = stuAnswers.join('');
@@ -249,7 +249,6 @@
         '<th>SBD</th>' +
         '<th>Mã đề</th>' +
         '<th>Số câu đúng (trên 30)</th>' +
-        '<th>30</th>' +
         '<th>% đúng</th>' +
         '<th>Ghi chú</th>' +
         '</tr></thead><tbody>';
@@ -260,7 +259,6 @@
           '<td>' + (r.sbd || '') + '</td>' +
           '<td>' + (r.code || '') + '</td>' +
           '<td>' + (r.correct != null ? r.correct : '') + '</td>' +
-          '<td>' + (r.total != null ? r.total : '') + '</td>' +
           '<td>' + (r.percent || '') + '</td>' +
           '<td>' + (r.error || '') + '</td>' +
           '</tr>';
